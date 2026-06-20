@@ -1,0 +1,96 @@
+name: Chi Wah Room Booker
+
+on:
+  # Midnight HKT = 16:00 UTC
+  schedule:
+    - cron: '0 16 * * *'
+
+  # Manual trigger: go to Actions → Chi Wah Room Booker → Run workflow
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Date to book (YYYY-MM-DD)'
+        required: true
+      time:
+        description: 'Start time HH:MM (must be on the hour)'
+        required: true
+        default: '10:00'
+      duration:
+        description: 'Hours (1, 2, 3, or 4)'
+        required: true
+        default: '2'
+      room_type:
+        description: 'Room type'
+        required: true
+        default: 'group'
+        type: choice
+        options:
+          - group
+          - discussion
+
+jobs:
+  book:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed to commit bookings.json status updates
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Chromium
+        run: playwright install chromium --with-deps
+
+      # ── Scheduled run: reads bookings.json for tomorrow's entries ──────────
+      - name: Book (scheduled — from bookings.json)
+        if: github.event_name == 'schedule'
+        env:
+          HKU_UID: ${{ secrets.HKU_UID }}
+          HKU_PIN: ${{ secrets.HKU_PIN }}
+        run: python run_scheduled.py
+
+      - name: Commit updated bookings.json
+        if: github.event_name == 'schedule'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add bookings.json
+          git diff --staged --quiet || git commit -m "chore: update booking status [skip ci]"
+          git push
+
+      # ── Manual run: book immediately with the provided inputs ─────────────
+      - name: Book (manual — immediate)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          HKU_UID: ${{ secrets.HKU_UID }}
+          HKU_PIN: ${{ secrets.HKU_PIN }}
+        run: |
+          python book.py \
+            --date "${{ github.event.inputs.date }}" \
+            --time "${{ github.event.inputs.time }}" \
+            --duration ${{ github.event.inputs.duration }} \
+            --room-type ${{ github.event.inputs.room_type }} \
+            --now
+
+      # ── Upload logs as artifact (visible in Actions UI) ───────────────────
+      - name: Upload booking log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: booking-log-${{ github.run_id }}
+          path: logs/bookings.log
+          if-no-files-found: ignore
