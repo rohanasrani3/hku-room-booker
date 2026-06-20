@@ -1,8 +1,8 @@
 [
   {
-    "date": "2026-06-21",
+    "date": "2026-06-22",
     "time": "10:00",
-    "duration": 2,
+    "duration": 1,
     "room_type": "group",
     "status": "pending",
     "_note": "Example entry — change date/time and set status to pending"
