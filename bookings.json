@@ -6,5 +6,16 @@
     "room_type": "group",
     "status": "failed",
     "_note": "Example entry \u2014 change date/time and set status to pending"
+  },
+  {
+    "id": "2026-07-08-10:00-all_study_rooms-20260706183916",
+    "date": "2026-07-08",
+    "time": "10:00",
+    "duration": 1,
+    "room_target": "all_study_rooms",
+    "purpose": "Study",
+    "status": "pending",
+    "created_at": "2026-07-06T18:39:16+08:00",
+    "attempt_count": 0
   }
 ]
