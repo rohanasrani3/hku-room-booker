@@ -14,8 +14,10 @@
     "duration": 1,
     "room_target": "all_study_rooms",
     "purpose": "Study",
-    "status": "pending",
+    "status": "booked",
     "created_at": "2026-07-06T18:39:16+08:00",
-    "attempt_count": 0
+    "attempt_count": 1,
+    "last_attempt_at": "2026-07-07T02:16:29+08:00",
+    "updated_at": "2026-07-07T02:16:29+08:00"
   }
 ]
