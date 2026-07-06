@@ -1,13 +1,21 @@
-name: Chi Wah Room Booker
+name: HKU Room Booker
 
 on:
   # Midnight HKT = 16:00 UTC
   schedule:
     - cron: '0 16 * * *'
 
-  # Manual trigger: go to Actions → Chi Wah Room Booker → Run workflow
+  # Manual trigger: go to Actions -> HKU Room Booker -> Run workflow
   workflow_dispatch:
     inputs:
+      action:
+        description: 'What should this run do?'
+        required: true
+        default: 'book_now'
+        type: choice
+        options:
+          - book_now
+          - schedule_future
       date:
         description: 'Date to book (YYYY-MM-DD)'
         required: true
@@ -19,14 +27,34 @@ on:
         description: 'Hours (1, 2, 3, or 4)'
         required: true
         default: '2'
-      room_type:
-        description: 'Room type'
+      room_target:
+        description: 'Room target'
         required: true
-        default: 'group'
+        default: 'all_study_rooms'
         type: choice
         options:
-          - group
-          - discussion
+          - all_study_rooms
+          - chi_wah_study_rooms
+          - chi_wah_study_booths
+          - discussion_rooms
+          - single_study_rooms
+          - study_tables
+          - main_library_discussion_rooms
+          - main_library_single_study_rooms
+          - dental_discussion_rooms
+          - law_discussion_rooms
+          - medical_discussion_rooms
+          - medical_single_study_rooms
+          - music_discussion_rooms
+      purpose:
+        description: 'Booking purpose/description'
+        required: true
+        default: 'Study'
+      dry_run:
+        description: 'Test without submitting the final booking form'
+        required: true
+        default: false
+        type: boolean
 
 jobs:
   book:
@@ -55,16 +83,18 @@ jobs:
       - name: Install Chromium
         run: playwright install chromium --with-deps
 
-      # ── Scheduled run: reads bookings.json for tomorrow's entries ──────────
-      - name: Book (scheduled — from bookings.json)
+      # Scheduled run: reads bookings.json for tomorrow's entries.
+      - name: Book scheduled entries
+        id: scheduled
         if: github.event_name == 'schedule'
+        continue-on-error: true
         env:
           HKU_UID: ${{ secrets.HKU_UID }}
           HKU_PIN: ${{ secrets.HKU_PIN }}
         run: python run_scheduled.py
 
       - name: Commit updated bookings.json
-        if: github.event_name == 'schedule'
+        if: always() && github.event_name == 'schedule'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -72,21 +102,52 @@ jobs:
           git diff --staged --quiet || git commit -m "chore: update booking status [skip ci]"
           git push
 
-      # ── Manual run: book immediately with the provided inputs ─────────────
-      - name: Book (manual — immediate)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Fail scheduled run if due booking failed
+        if: github.event_name == 'schedule' && steps.scheduled.outcome == 'failure'
+        run: exit 1
+
+      # Manual run: book immediately with the provided inputs.
+      - name: Book manual immediate request
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'book_now'
         env:
           HKU_UID: ${{ secrets.HKU_UID }}
           HKU_PIN: ${{ secrets.HKU_PIN }}
         run: |
-          python book.py \
-            --date "${{ github.event.inputs.date }}" \
-            --time "${{ github.event.inputs.time }}" \
-            --duration ${{ github.event.inputs.duration }} \
-            --room-type ${{ github.event.inputs.room_type }} \
+          args=(
+            python book.py
+            --date "${{ inputs.date }}"
+            --time "${{ inputs.time }}"
+            --duration "${{ inputs.duration }}"
+            --room-target "${{ inputs.room_target }}"
+            --purpose "${{ inputs.purpose }}"
             --now
+          )
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            args+=(--dry-run)
+          fi
+          "${args[@]}"
 
-      # ── Upload logs as artifact (visible in Actions UI) ───────────────────
+      # Manual run: queue a future booking in bookings.json.
+      - name: Queue future booking
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'schedule_future'
+        run: |
+          python queue_booking.py \
+            --date "${{ inputs.date }}" \
+            --time "${{ inputs.time }}" \
+            --duration "${{ inputs.duration }}" \
+            --room-target "${{ inputs.room_target }}" \
+            --purpose "${{ inputs.purpose }}"
+
+      - name: Commit queued future booking
+        if: github.event_name == 'workflow_dispatch' && inputs.action == 'schedule_future'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add bookings.json
+          git diff --staged --quiet || git commit -m "chore: queue room booking [skip ci]"
+          git push
+
+      # Upload logs as an artifact visible in the Actions UI.
       - name: Upload booking log
         if: always()
         uses: actions/upload-artifact@v4

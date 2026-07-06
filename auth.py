@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 async def login(page: Page) -> None:
     """Navigate to the booking site and authenticate via the HKUL auth portal."""
     if not HKU_UID or not HKU_PIN:
-        raise RuntimeError("HKU_UID and HKU_PIN must be set in .env")
+        raise RuntimeError("HKU_UID and HKU_PIN must be set in the environment or .env")
 
     log.info(f"Opening {BOOKING_BASE_URL}")
     await page.goto(BOOKING_BASE_URL)

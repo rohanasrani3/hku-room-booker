@@ -1,18 +1,9 @@
-"""
-Booking logic for HKU Chi Wah Learning Commons.
+"""Booking logic for HKU Library bookable study spaces."""
 
-Actual page structure (discovered 2026-06-19):
-  - Booking form URL:
-      NewBooking.aspx?library=5&ftype=29&facility=FACILITY&date=YYYYMMDD&session=HHMMHHMM
-  - Sessions are 1-hour blocks, e.g. '09001000' = 09:00–10:00
-    (last slot of day: '23002345' = 23:00–23:45)
-  - URL params pre-select date, facility, and first session checkbox
-  - Submit → optional Yes/No confirm → optional Skip Email → result
-  - Known Chi Wah study room facility IDs: 258–276 (non-contiguous)
-"""
-
+from dataclasses import dataclass
 import logging
 from datetime import date, time
+from urllib.parse import urlencode
 
 from playwright.async_api import async_playwright, Page, TimeoutError as PWTimeout
 
@@ -21,15 +12,113 @@ from auth import login
 log = logging.getLogger(__name__)
 
 BASE = "https://booking.lib.hku.hk/Secure"
+NEW_BOOKING_URL = f"{BASE}/NewBooking.aspx"
 
-# Chi Wah study room facility IDs (scraped from status page, June 2026).
-# Study Rooms 2–20 (room numbers skip 1,6,11,16,17 which don't exist).
-STUDY_ROOM_FACILITIES = [258, 259, 260, 261, 263, 264, 265, 266, 268, 269, 270, 271, 274, 275, 276]
 
-ROOM_TYPE_CONFIG = {
-    "group":      {"library": 5, "ftype": 29, "facilities": STUDY_ROOM_FACILITIES},
-    "discussion": {"library": 5, "ftype": 30, "facilities": STUDY_ROOM_FACILITIES},  # ftype 30 = TBC
+@dataclass(frozen=True)
+class TargetRule:
+    description: str
+    library_keywords: tuple[str, ...] = ()
+    type_keywords: tuple[str, ...] = ()
+    type_exact: tuple[str, ...] = ()
+    exclude_type_keywords: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class FacilityCandidate:
+    library_id: int
+    library_name: str
+    ftype_id: int
+    type_name: str
+    facility_id: int
+    facility_name: str
+
+
+TARGET_RULES: dict[str, TargetRule] = {
+    "all_study_rooms": TargetRule(
+        "All bookable HKU study rooms, discussion rooms, single study rooms, and study booths",
+        type_keywords=("study room", "discussion room", "study booth"),
+        exclude_type_keywords=("study table",),
+    ),
+    "chi_wah_study_rooms": TargetRule(
+        "Chi Wah Learning Commons study rooms",
+        library_keywords=("chi wah",),
+        type_exact=("study room",),
+    ),
+    "chi_wah_study_booths": TargetRule(
+        "Chi Wah Learning Commons study booths",
+        library_keywords=("chi wah",),
+        type_exact=("study booth",),
+    ),
+    "discussion_rooms": TargetRule(
+        "Discussion rooms in all HKU libraries",
+        type_exact=("discussion room",),
+    ),
+    "single_study_rooms": TargetRule(
+        "Single study rooms in all HKU libraries",
+        type_keywords=("single study room",),
+    ),
+    "study_tables": TargetRule(
+        "Bookable study tables",
+        type_keywords=("study table",),
+    ),
+    "main_library_discussion_rooms": TargetRule(
+        "Main Library discussion rooms",
+        library_keywords=("main library",),
+        type_exact=("discussion room",),
+    ),
+    "main_library_single_study_rooms": TargetRule(
+        "Main Library single study rooms",
+        library_keywords=("main library",),
+        type_keywords=("single study room",),
+    ),
+    "dental_discussion_rooms": TargetRule(
+        "Dental Library discussion rooms",
+        library_keywords=("dental",),
+        type_exact=("discussion room",),
+    ),
+    "law_discussion_rooms": TargetRule(
+        "Law Library discussion rooms",
+        library_keywords=("law library",),
+        type_exact=("discussion room",),
+    ),
+    "medical_discussion_rooms": TargetRule(
+        "Medical Library discussion rooms",
+        library_keywords=("medical library",),
+        type_exact=("discussion room",),
+    ),
+    "medical_single_study_rooms": TargetRule(
+        "Medical Library single study rooms",
+        library_keywords=("medical library",),
+        type_keywords=("single study room",),
+    ),
+    "music_discussion_rooms": TargetRule(
+        "Music Library discussion rooms",
+        library_keywords=("music library",),
+        type_exact=("discussion room",),
+    ),
 }
+
+TARGET_ALIASES = {
+    "all": "all_study_rooms",
+    "group": "chi_wah_study_rooms",
+    "study": "chi_wah_study_rooms",
+    "booth": "chi_wah_study_booths",
+    "discussion": "discussion_rooms",
+    "single": "single_study_rooms",
+}
+
+BOOKING_TARGETS = tuple(sorted((*TARGET_RULES.keys(), *TARGET_ALIASES.keys())))
+
+# Fallback for the old Chi Wah-only path if live dropdown discovery fails.
+CHI_WAH_STUDY_ROOM_FALLBACKS = [
+    FacilityCandidate(5, "Chi Wah Learning Commons", 29, "Study Room", facility_id, f"Study Room {room_no}")
+    for facility_id, room_no in (
+        (258, 2), (259, 3), (260, 4), (261, 5), (263, 7), (264, 8),
+        (265, 9), (266, 10), (268, 12), (269, 13), (270, 14),
+        (271, 15), (274, 18), (275, 19), (276, 20), (277, 21),
+    )
+]
 
 
 # ── Session helpers ───────────────────────────────────────────────────────────
@@ -57,30 +146,141 @@ async def _visible(page: Page, selector: str, timeout: int = 3_000) -> bool:
         return False
 
 
+async def _select_options(page: Page, selector: str) -> list[dict[str, str]]:
+    return await page.locator(selector).evaluate(
+        """select => [...select.options].map(option => ({
+            value: option.value,
+            text: option.textContent.trim()
+        })).filter(option => option.value)"""
+    )
+
+
+async def _select_option_and_wait(page: Page, selector: str, value: str) -> None:
+    try:
+        async with page.expect_navigation(wait_until="networkidle", timeout=10_000):
+            await page.select_option(selector, value)
+    except PWTimeout:
+        await page.wait_for_load_state("networkidle")
+
+
+def _normalize_target(room_target: str) -> str:
+    normalized = room_target.strip().lower().replace("-", "_")
+    normalized = TARGET_ALIASES.get(normalized, normalized)
+    if normalized not in TARGET_RULES:
+        known = ", ".join(sorted(TARGET_RULES))
+        raise ValueError(f"Unknown room target '{room_target}'. Known targets: {known}")
+    return normalized
+
+
+def _matches_rule(rule: TargetRule, library_name: str, type_name: str) -> bool:
+    library = library_name.lower()
+    ftype = type_name.lower()
+
+    if rule.library_keywords and not any(keyword in library for keyword in rule.library_keywords):
+        return False
+    if rule.type_exact and ftype not in rule.type_exact:
+        return False
+    if rule.type_keywords and not any(keyword in ftype for keyword in rule.type_keywords):
+        return False
+    if rule.exclude_type_keywords and any(keyword in ftype for keyword in rule.exclude_type_keywords):
+        return False
+    return True
+
+
+async def _discover_facilities(page: Page, room_target: str) -> list[FacilityCandidate]:
+    """Discover live facility IDs from the HKU booking form dropdowns."""
+    normalized = _normalize_target(room_target)
+    rule = TARGET_RULES[normalized]
+    candidates: list[FacilityCandidate] = []
+
+    await page.goto(NEW_BOOKING_URL, wait_until="networkidle")
+    libraries = await _select_options(page, "#main_ddlLibrary")
+
+    for library in libraries:
+        if rule.library_keywords and not _matches_rule(
+            TargetRule("", library_keywords=rule.library_keywords),
+            library["text"],
+            "",
+        ):
+            continue
+
+        await page.goto(NEW_BOOKING_URL, wait_until="networkidle")
+        await _select_option_and_wait(page, "#main_ddlLibrary", library["value"])
+        facility_types = await _select_options(page, "#main_ddlType")
+
+        for facility_type in facility_types:
+            if not _matches_rule(rule, library["text"], facility_type["text"]):
+                continue
+
+            await page.goto(NEW_BOOKING_URL, wait_until="networkidle")
+            await _select_option_and_wait(page, "#main_ddlLibrary", library["value"])
+            await _select_option_and_wait(page, "#main_ddlType", facility_type["value"])
+            facilities = await _select_options(page, "#main_ddlFacility")
+
+            for facility in facilities:
+                candidates.append(
+                    FacilityCandidate(
+                        library_id=int(library["value"]),
+                        library_name=library["text"],
+                        ftype_id=int(facility_type["value"]),
+                        type_name=facility_type["text"],
+                        facility_id=int(facility["value"]),
+                        facility_name=facility["text"],
+                    )
+                )
+
+    if not candidates and normalized == "chi_wah_study_rooms":
+        log.warning("Live discovery found no Chi Wah study rooms; using static fallback IDs.")
+        candidates = CHI_WAH_STUDY_ROOM_FALLBACKS
+
+    log.info("Discovered %s facilities for target '%s'.", len(candidates), normalized)
+    for candidate in candidates[:20]:
+        log.info(
+            "  %s | %s | %s",
+            candidate.library_name,
+            candidate.type_name,
+            candidate.facility_name,
+        )
+    if len(candidates) > 20:
+        log.info("  ...and %s more facilities", len(candidates) - 20)
+
+    return candidates
+
+
 async def _try_book_facility(
     page: Page,
-    facility_id: int,
-    library: int,
-    ftype: int,
+    candidate: FacilityCandidate,
     target_date: date,
     sessions: list[str],
+    purpose: str,
     dry_run: bool,
 ) -> bool:
     """Try to book one specific facility. Returns True on confirmed success."""
     date_str    = target_date.strftime("%Y%m%d")
     date_iso    = target_date.strftime("%Y-%m-%d")
-    booking_url = (
-        f"{BASE}/NewBooking.aspx?"
-        f"library={library}&ftype={ftype}"
-        f"&facility={facility_id}&date={date_str}&session={sessions[0]}"
+    query = urlencode(
+        {
+            "library": candidate.library_id,
+            "ftype": candidate.ftype_id,
+            "facility": candidate.facility_id,
+            "date": date_str,
+            "session": sessions[0],
+        }
     )
+    booking_url = f"{NEW_BOOKING_URL}?{query}"
 
-    log.info(f"  Trying facility {facility_id}")
+    log.info(
+        "  Trying %s | %s | %s (%s)",
+        candidate.library_name,
+        candidate.type_name,
+        candidate.facility_name,
+        candidate.facility_id,
+    )
     await page.goto(booking_url, wait_until="networkidle")
 
     # Bail out if we were redirected off the booking form
     if "NewBooking.aspx" not in page.url:
-        log.warning(f"  Facility {facility_id}: unexpected redirect → {page.url}")
+        log.warning(f"  Facility {candidate.facility_id}: unexpected redirect → {page.url}")
         return False
 
     # Verify all required session checkboxes exist and are available
@@ -90,7 +290,7 @@ async def _try_book_facility(
             log.warning(f"  Session {session} not on form (outside library hours?)")
             return False
         if not await cb.is_enabled():
-            log.info(f"  Facility {facility_id}: session {session} is already booked")
+            log.info(f"  Facility {candidate.facility_id}: session {session} is already booked")
             return False
 
     # Tick all required sessions (first one is pre-checked by URL param)
@@ -105,6 +305,9 @@ async def _try_book_facility(
     if current_date != date_iso:
         await page.select_option("select#main_ddlDate", date_iso)
         log.info(f"  Corrected date → {date_iso}")
+
+    if await page.locator("#main_txtUserDescription").count():
+        await page.fill("#main_txtUserDescription", purpose)
 
     if dry_run:
         log.info("  [dry-run] Stopping before Submit.")
@@ -129,17 +332,17 @@ async def _try_book_facility(
 
     error_words = ["not available", "already booked", "conflict", "exceed", "invalid", "error"]
     if any(w in page_text for w in error_words):
-        log.info(f"  Facility {facility_id}: server rejected booking")
+        log.info(f"  Facility {candidate.facility_id}: server rejected booking")
         return False
 
     success_words = ["successfully", "confirmed", "booking ref", "receipt", "thank", "booked"]
     if any(w in page_text for w in success_words):
         if await _visible(page, "input[name='ctl00$main$btnCloseResult']", timeout=2_000):
             await page.click("input[name='ctl00$main$btnCloseResult']")
-        log.info(f"  Facility {facility_id}: BOOKED ✓")
+        log.info(f"  Facility {candidate.facility_id}: BOOKED")
         return True
 
-    log.warning(f"  Facility {facility_id}: ambiguous result → {page_text[:300]}")
+    log.warning(f"  Facility {candidate.facility_id}: ambiguous result → {page_text[:300]}")
     return False
 
 
@@ -149,18 +352,19 @@ async def book_room(
     target_date: date,
     start_time: time,
     duration_hours: int,
-    room_type: str,
+    room_target: str,
+    purpose: str = "Study",
     headless: bool = True,
     dry_run: bool = False,
 ) -> bool:
     """
-    Login, then try each Chi Wah facility in order until one is successfully booked
+    Login, then try each matching HKU facility in order until one is successfully booked
     for target_date, start_time, duration_hours hours.  Returns True on success.
     """
-    cfg      = ROOM_TYPE_CONFIG[room_type]
     sessions = _sessions_for(start_time, duration_hours)
+    normalized_target = _normalize_target(room_target)
     log.info(
-        f"Booking {room_type} room | {target_date} | "
+        f"Booking target={normalized_target} | {target_date} | "
         f"{start_time.strftime('%H:%M')} for {duration_hours}h | "
         f"sessions={sessions}"
     )
@@ -171,17 +375,25 @@ async def book_room(
         page    = await ctx.new_page()
         try:
             await login(page)
-            for facility_id in cfg["facilities"]:
+            candidates = await _discover_facilities(page, normalized_target)
+            if not candidates:
+                log.error("No matching facilities found for target '%s'.", normalized_target)
+                return False
+
+            for candidate in candidates:
                 try:
                     ok = await _try_book_facility(
-                        page, facility_id,
-                        cfg["library"], cfg["ftype"],
-                        target_date, sessions, dry_run,
+                        page,
+                        candidate,
+                        target_date,
+                        sessions,
+                        purpose,
+                        dry_run,
                     )
                     if ok:
                         return True
                 except Exception:
-                    log.exception(f"  Exception on facility {facility_id} — trying next")
+                    log.exception(f"  Exception on facility {candidate.facility_id} — trying next")
             log.error("All facilities tried — none available.")
             return False
         finally:
