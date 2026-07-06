@@ -135,6 +135,15 @@ def _sessions_for(start: time, duration_hours: int) -> list[str]:
     return [_session_str(start.hour + i) for i in range(duration_hours)]
 
 
+def _session_time(session_part: str) -> str:
+    """Convert HHMM from a session token into HH:MM."""
+    return f"{session_part[:2]}:{session_part[2:]}"
+
+
+def _booking_record_times(sessions: list[str]) -> tuple[str, str]:
+    return _session_time(sessions[0][:4]), _session_time(sessions[-1][4:])
+
+
 # ── Booking helpers ───────────────────────────────────────────────────────────
 
 async def _visible(page: Page, selector: str, timeout: int = 3_000) -> bool:
@@ -161,6 +170,35 @@ async def _select_option_and_wait(page: Page, selector: str, value: str) -> None
             await page.select_option(selector, value)
     except PWTimeout:
         await page.wait_for_load_state("networkidle")
+
+
+async def _matching_booking_record_exists(
+    page: Page,
+    target_date: date,
+    sessions: list[str],
+) -> bool:
+    """Return True if My Booking Record already contains this date/time."""
+    start_label, end_label = _booking_record_times(sessions)
+
+    await page.goto(f"{BASE}/MyBookingRecord.aspx", wait_until="networkidle")
+    rows = await page.locator("tr").evaluate_all(
+        """rows => rows.map(row => [...row.cells]
+            .map(cell => cell.innerText.trim())
+            .filter(Boolean))"""
+    )
+
+    for cells in rows:
+        row_text = " ".join(cells).lower()
+        if (
+            target_date.isoformat() in row_text
+            and start_label in row_text
+            and end_label in row_text
+            and "booked" in row_text
+        ):
+            log.info("Matching booking already appears in My Booking Record: %s", " | ".join(cells))
+            return True
+
+    return False
 
 
 def _normalize_target(room_target: str) -> str:
@@ -332,6 +370,9 @@ async def _try_book_facility(
 
     error_words = ["not available", "already booked", "conflict", "exceed", "invalid", "error"]
     if any(w in page_text for w in error_words):
+        if await _matching_booking_record_exists(page, target_date, sessions):
+            log.info(f"  Facility {candidate.facility_id}: booking verified in My Booking Record")
+            return True
         log.info(f"  Facility {candidate.facility_id}: server rejected booking")
         return False
 
@@ -340,6 +381,10 @@ async def _try_book_facility(
         if await _visible(page, "input[name='ctl00$main$btnCloseResult']", timeout=2_000):
             await page.click("input[name='ctl00$main$btnCloseResult']")
         log.info(f"  Facility {candidate.facility_id}: BOOKED")
+        return True
+
+    if await _matching_booking_record_exists(page, target_date, sessions):
+        log.info(f"  Facility {candidate.facility_id}: booking verified in My Booking Record")
         return True
 
     log.warning(f"  Facility {candidate.facility_id}: ambiguous result → {page_text[:300]}")
@@ -375,6 +420,10 @@ async def book_room(
         page    = await ctx.new_page()
         try:
             await login(page)
+            if await _matching_booking_record_exists(page, target_date, sessions):
+                log.info("DONE — matching booking already exists.")
+                return True
+
             candidates = await _discover_facilities(page, normalized_target)
             if not candidates:
                 log.error("No matching facilities found for target '%s'.", normalized_target)
