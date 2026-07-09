@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>HKU Room Booker</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar" aria-label="Application header">
+        <div>
+          <p class="eyebrow">HKU Libraries</p>
+          <h1>Room Booker</h1>
+        </div>
+        <div class="run-state" id="connectionState">Ready</div>
+      </section>
+
+      <section class="workspace">
+        <form class="panel form-panel" id="bookingForm">
+          <div class="connection-section hidden" id="directGithubFields">
+            <div class="field-grid repo-grid">
+              <label class="field">
+                <span>GitHub Owner</span>
+                <input type="text" name="github_owner" autocomplete="username" placeholder="username">
+              </label>
+
+              <label class="field">
+                <span>Fork Repo</span>
+                <input type="text" name="github_repo" placeholder="hku-room-booker">
+              </label>
+            </div>
+
+            <div class="field-grid repo-grid">
+              <label class="field">
+                <span>Branch</span>
+                <input type="text" name="github_ref" value="main">
+              </label>
+
+              <label class="field">
+                <span>Workflow</span>
+                <input type="text" name="github_workflow" value="book.yml">
+              </label>
+            </div>
+
+            <label class="field">
+              <span>GitHub Token</span>
+              <input type="password" name="github_token" autocomplete="current-password" placeholder="Fine-grained token for this fork">
+            </label>
+          </div>
+
+          <div class="mode-control" role="radiogroup" aria-label="Booking mode">
+            <label>
+              <input type="radio" name="action" value="book_now" checked>
+              <span>Book Now</span>
+            </label>
+            <label>
+              <input type="radio" name="action" value="schedule_future">
+              <span>Future</span>
+            </label>
+          </div>
+
+          <div class="field-grid">
+            <label class="field">
+              <span>Date</span>
+              <input type="date" name="date" required>
+            </label>
+
+            <label class="field">
+              <span>Start</span>
+              <input type="time" name="time" value="10:00" step="3600" required>
+            </label>
+
+            <label class="field">
+              <span>Hours</span>
+              <select name="duration" required>
+                <option value="1">1</option>
+                <option value="2" selected>2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+              </select>
+            </label>
+          </div>
+
+          <label class="field">
+            <span>Room Target</span>
+            <select name="room_target" id="roomTarget" required></select>
+          </label>
+
+          <label class="field">
+            <span>Purpose</span>
+            <input type="text" name="purpose" value="Study" maxlength="80" required>
+          </label>
+
+          <label class="toggle" id="dryRunRow">
+            <input type="checkbox" name="dry_run">
+            <span>Dry run</span>
+          </label>
+
+          <label class="field hidden" id="tokenField">
+            <span>UI Access Token</span>
+            <input type="password" name="app_token" autocomplete="current-password">
+          </label>
+
+          <button class="primary" type="submit" id="submitButton">
+            <span class="button-icon" aria-hidden="true"></span>
+            <span>Run Booking</span>
+          </button>
+        </form>
+
+        <aside class="panel status-panel" aria-live="polite">
+          <div>
+            <p class="eyebrow">Workflow</p>
+            <h2 id="statusTitle">Idle</h2>
+          </div>
+          <dl class="summary">
+            <div>
+              <dt>Repository</dt>
+              <dd id="repoName">Not connected</dd>
+            </div>
+            <div>
+              <dt>Reference</dt>
+              <dd id="repoRef">main</dd>
+            </div>
+            <div>
+              <dt>Last Request</dt>
+              <dd id="lastRequest">None</dd>
+            </div>
+          </dl>
+          <a class="actions-link disabled" id="actionsLink" href="#" target="_blank" rel="noreferrer">Open Actions</a>
+        </aside>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>

@@ -2,3 +2,5 @@
 __pycache__/
 *.pyc
 logs/bookings.log
+web/node_modules/
+web/.env

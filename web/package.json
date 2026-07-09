@@ -1,0 +1,13 @@
+{
+  "name": "hku-room-booker-ui",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Small web UI for dispatching the HKU room booker GitHub Action.",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}
