@@ -96,11 +96,14 @@ jobs:
           HKU_UID: ${{ secrets.HKU_UID }}
           HKU_PIN: ${{ secrets.HKU_PIN }}
         run: |
-          python run_manual.py \
+          args=(
+            python run_manual.py
             --date "${{ inputs.date }}"
             --time "${{ inputs.time }}"
             --duration "${{ inputs.duration }}"
             --room-target "${{ inputs.room_target }}"
+          )
+          "${args[@]}"
 
       - name: Commit queued future booking
         if: github.event_name == 'workflow_dispatch'
