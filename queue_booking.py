@@ -67,7 +67,7 @@ def validate_args(args: argparse.Namespace) -> tuple[str, str]:
     if target_date < earliest_schedulable:
         sys.exit(
             "Future automatic bookings must be at least two HKT dates away. "
-            "Use action=book_now for dates whose booking window is already open."
+            "Use the manual workflow with a date no later than tomorrow for immediate booking."
         )
 
     return target_date.isoformat(), start_time.strftime("%H:%M")

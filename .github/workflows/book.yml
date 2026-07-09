@@ -8,14 +8,6 @@ on:
   # Manual trigger: go to Actions -> HKU Room Booker -> Run workflow
   workflow_dispatch:
     inputs:
-      action:
-        description: 'What should this run do?'
-        required: true
-        default: 'book_now'
-        type: choice
-        options:
-          - book_now
-          - schedule_future
       date:
         description: 'Date to book (YYYY-MM-DD)'
         required: true
@@ -46,15 +38,6 @@ on:
           - medical_discussion_rooms
           - medical_single_study_rooms
           - music_discussion_rooms
-      purpose:
-        description: 'Booking purpose/description'
-        required: true
-        default: 'Study'
-      dry_run:
-        description: 'Test without submitting the final booking form'
-        required: true
-        default: false
-        type: boolean
 
 jobs:
   book:
@@ -106,40 +89,21 @@ jobs:
         if: github.event_name == 'schedule' && steps.scheduled.outcome == 'failure'
         run: exit 1
 
-      # Manual run: book immediately with the provided inputs.
-      - name: Book manual immediate request
-        if: github.event_name == 'workflow_dispatch' && inputs.action == 'book_now'
+      # Manual run: automatically books now for today/tomorrow, otherwise queues future.
+      - name: Run manual request
+        if: github.event_name == 'workflow_dispatch'
         env:
           HKU_UID: ${{ secrets.HKU_UID }}
           HKU_PIN: ${{ secrets.HKU_PIN }}
         run: |
-          args=(
-            python book.py
+          python run_manual.py \
             --date "${{ inputs.date }}"
             --time "${{ inputs.time }}"
             --duration "${{ inputs.duration }}"
             --room-target "${{ inputs.room_target }}"
-            --purpose "${{ inputs.purpose }}"
-            --now
-          )
-          if [ "${{ inputs.dry_run }}" = "true" ]; then
-            args+=(--dry-run)
-          fi
-          "${args[@]}"
-
-      # Manual run: queue a future booking in bookings.json.
-      - name: Queue future booking
-        if: github.event_name == 'workflow_dispatch' && inputs.action == 'schedule_future'
-        run: |
-          python queue_booking.py \
-            --date "${{ inputs.date }}" \
-            --time "${{ inputs.time }}" \
-            --duration "${{ inputs.duration }}" \
-            --room-target "${{ inputs.room_target }}" \
-            --purpose "${{ inputs.purpose }}"
 
       - name: Commit queued future booking
-        if: github.event_name == 'workflow_dispatch' && inputs.action == 'schedule_future'
+        if: github.event_name == 'workflow_dispatch'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

@@ -144,7 +144,7 @@ async def main() -> None:
     if args.now and target_date > today_hkt + timedelta(days=1):
         sys.exit(
             "The booking window is not open for that date yet. "
-            "Use action=schedule_future in GitHub Actions."
+            "Use the manual workflow to queue it automatically."
         )
 
     log.info(
