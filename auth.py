@@ -22,7 +22,7 @@ async def login(page: Page) -> None:
         raise RuntimeError("HKU_UID and HKU_PIN must be set in the environment or .env")
 
     log.info(f"Opening {BOOKING_BASE_URL}")
-    await page.goto(BOOKING_BASE_URL)
+    await page.goto(BOOKING_BASE_URL, wait_until="commit", timeout=30_000)
 
     # booking.lib.hku.hk redirects to lib.hku.hk/hkulauth/legacy/authMain?uri=...
     await page.wait_for_url(
@@ -41,4 +41,5 @@ async def login(page: Page) -> None:
         re.compile(r"booking\.lib\.hku\.hk"),
         timeout=20_000,
     )
+    await page.wait_for_load_state("domcontentloaded", timeout=20_000)
     log.info("Login successful — back on booking site.")

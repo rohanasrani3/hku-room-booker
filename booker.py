@@ -110,15 +110,144 @@ TARGET_ALIASES = {
 
 BOOKING_TARGETS = tuple(sorted((*TARGET_RULES.keys(), *TARGET_ALIASES.keys())))
 
-# Fallback for the old Chi Wah-only path if live dropdown discovery fails.
-CHI_WAH_STUDY_ROOM_FALLBACKS = [
-    FacilityCandidate(5, "Chi Wah Learning Commons", 29, "Study Room", facility_id, f"Study Room {room_no}")
-    for facility_id, room_no in (
-        (258, 2), (259, 3), (260, 4), (261, 5), (263, 7), (264, 8),
-        (265, 9), (266, 10), (268, 12), (269, 13), (270, 14),
-        (271, 15), (274, 18), (275, 19), (276, 20), (277, 21),
-    )
-]
+
+def _facilities(
+    library_id: int,
+    library_name: str,
+    ftype_id: int,
+    type_name: str,
+    rows: tuple[tuple[int, str], ...],
+) -> list[FacilityCandidate]:
+    return [
+        FacilityCandidate(library_id, library_name, ftype_id, type_name, facility_id, facility_name)
+        for facility_id, facility_name in rows
+    ]
+
+
+CHI_WAH_STUDY_ROOMS = _facilities(
+    5,
+    "Chi Wah Learning Commons",
+    29,
+    "Study Room",
+    (
+        (258, "Study Room 2"), (259, "Study Room 3"), (260, "Study Room 4"),
+        (261, "Study Room 5"), (263, "Study Room 7"), (264, "Study Room 8"),
+        (265, "Study Room 9"), (266, "Study Room 10"), (268, "Study Room 12"),
+        (269, "Study Room 13"), (270, "Study Room 14"), (271, "Study Room 15"),
+        (274, "Study Room 18"), (275, "Study Room 19"), (276, "Study Room 20"),
+        (277, "Study Room 21"),
+    ),
+)
+CHI_WAH_STUDY_BOOTHS = _facilities(
+    5,
+    "Chi Wah Learning Commons",
+    56,
+    "Study Booth",
+    (
+        (1059, "Study Booth A"), (1061, "Study Booth B"),
+        (1062, "Study Booth C"), (1063, "Study Booth D"),
+    ),
+)
+MAIN_DISCUSSION_ROOMS = _facilities(
+    3,
+    "Main Library",
+    21,
+    "Discussion Room",
+    (
+        (126, "Discussion Room 1"), (127, "Discussion Room 2"),
+        (128, "Discussion Room 3"), (129, "Discussion Room 4"),
+        (1041, "Discussion Room 5"), (131, "Discussion Room 6"),
+        (132, "Discussion Room 7"), (133, "Discussion Room 8"),
+        (135, "Discussion Room 10"), (136, "Discussion Room 11"),
+        (137, "Discussion Room 12"), (138, "Discussion Room 13"),
+        (139, "Discussion Room 14"), (140, "Discussion Room 15"),
+        (141, "Discussion Room 16"), (142, "Discussion Room 17"),
+        (143, "Discussion Room 18"), (144, "Discussion Room 19"),
+    ),
+)
+MAIN_SINGLE_STUDY_ROOMS = _facilities(
+    3,
+    "Main Library",
+    31,
+    "Single Study Room",
+    (
+        (398, "Room 422"), (399, "Room 423"), (400, "Room 424"),
+        (401, "Room 425"), (402, "Room 426"), (403, "Room 427"),
+        (404, "Room 428"), (405, "Room 432"), (406, "Room 433"),
+        (407, "Room 434"), (408, "Room 435"),
+    ),
+)
+DENTAL_DISCUSSION_ROOMS = _facilities(
+    9,
+    "Dental Library",
+    21,
+    "Discussion Room",
+    ((330, "Room 01"), (331, "Room 02"), (332, "Room 03"), (333, "Room 04")),
+)
+LAW_DISCUSSION_ROOMS = _facilities(
+    6,
+    "Law Library",
+    21,
+    "Discussion Room",
+    (
+        (281, "Room 1"), (282, "Room 2"), (283, "Room 3"),
+        (284, "Room 4"), (285, "Room 5"), (286, "Room 6"),
+    ),
+)
+MEDICAL_DISCUSSION_ROOMS = _facilities(
+    8,
+    "Medical Library",
+    21,
+    "Discussion Room",
+    (
+        (501, "Discussion Room 01"), (502, "Discussion Room 02"),
+        (503, "Discussion Room 03"), (504, "Discussion Room 04"),
+        (505, "Discussion Room 05"), (506, "Discussion Room 06"),
+    ),
+)
+MEDICAL_SINGLE_STUDY_ROOMS = _facilities(
+    8,
+    "Medical Library",
+    30,
+    "Single Study Room",
+    ((532, "ALG28"), (632, "ALG29"), (628, "ALG30"), (629, "ALG31")),
+)
+MUSIC_DISCUSSION_ROOMS = _facilities(
+    4,
+    "Music Library",
+    21,
+    "Discussion Room",
+    ((313, "Rm 1"), (314, "Rm 2"), (315, "Rm 3")),
+)
+
+DISCUSSION_ROOMS = (
+    MAIN_DISCUSSION_ROOMS
+    + DENTAL_DISCUSSION_ROOMS
+    + LAW_DISCUSSION_ROOMS
+    + MEDICAL_DISCUSSION_ROOMS
+    + MUSIC_DISCUSSION_ROOMS
+)
+SINGLE_STUDY_ROOMS = MAIN_SINGLE_STUDY_ROOMS + MEDICAL_SINGLE_STUDY_ROOMS
+
+STATIC_TARGET_FACILITIES = {
+    "all_study_rooms": (
+        CHI_WAH_STUDY_ROOMS
+        + CHI_WAH_STUDY_BOOTHS
+        + DISCUSSION_ROOMS
+        + SINGLE_STUDY_ROOMS
+    ),
+    "chi_wah_study_rooms": CHI_WAH_STUDY_ROOMS,
+    "chi_wah_study_booths": CHI_WAH_STUDY_BOOTHS,
+    "discussion_rooms": DISCUSSION_ROOMS,
+    "single_study_rooms": SINGLE_STUDY_ROOMS,
+    "main_library_discussion_rooms": MAIN_DISCUSSION_ROOMS,
+    "main_library_single_study_rooms": MAIN_SINGLE_STUDY_ROOMS,
+    "dental_discussion_rooms": DENTAL_DISCUSSION_ROOMS,
+    "law_discussion_rooms": LAW_DISCUSSION_ROOMS,
+    "medical_discussion_rooms": MEDICAL_DISCUSSION_ROOMS,
+    "medical_single_study_rooms": MEDICAL_SINGLE_STUDY_ROOMS,
+    "music_discussion_rooms": MUSIC_DISCUSSION_ROOMS,
+}
 
 
 # ── Session helpers ───────────────────────────────────────────────────────────
@@ -166,10 +295,10 @@ async def _select_options(page: Page, selector: str) -> list[dict[str, str]]:
 
 async def _select_option_and_wait(page: Page, selector: str, value: str) -> None:
     try:
-        async with page.expect_navigation(wait_until="networkidle", timeout=10_000):
+        async with page.expect_navigation(wait_until="domcontentloaded", timeout=10_000):
             await page.select_option(selector, value)
     except PWTimeout:
-        await page.wait_for_load_state("networkidle")
+        await page.wait_for_load_state("domcontentloaded")
 
 
 async def _matching_booking_record_exists(
@@ -180,7 +309,13 @@ async def _matching_booking_record_exists(
     """Return True if My Booking Record already contains this date/time."""
     start_label, end_label = _booking_record_times(sessions)
 
-    await page.goto(f"{BASE}/MyBookingRecord.aspx", wait_until="networkidle")
+    log.info("Checking My Booking Record for an existing matching booking...")
+    try:
+        await page.goto(f"{BASE}/MyBookingRecord.aspx", wait_until="domcontentloaded", timeout=20_000)
+    except PWTimeout:
+        log.warning("Timed out while checking My Booking Record; continuing to booking attempts.")
+        return False
+
     rows = await page.locator("tr").evaluate_all(
         """rows => rows.map(row => [...row.cells]
             .map(cell => cell.innerText.trim())
@@ -228,10 +363,16 @@ def _matches_rule(rule: TargetRule, library_name: str, type_name: str) -> bool:
 async def _discover_facilities(page: Page, room_target: str) -> list[FacilityCandidate]:
     """Discover live facility IDs from the HKU booking form dropdowns."""
     normalized = _normalize_target(room_target)
+    if normalized in STATIC_TARGET_FACILITIES:
+        candidates = STATIC_TARGET_FACILITIES[normalized]
+        log.info("Using %s static facilities for target '%s'.", len(candidates), normalized)
+        return candidates
+
     rule = TARGET_RULES[normalized]
     candidates: list[FacilityCandidate] = []
 
-    await page.goto(NEW_BOOKING_URL, wait_until="networkidle")
+    log.info("No static facility map for target '%s'; using live dropdown discovery.", normalized)
+    await page.goto(NEW_BOOKING_URL, wait_until="domcontentloaded", timeout=20_000)
     libraries = await _select_options(page, "#main_ddlLibrary")
 
     for library in libraries:
@@ -242,7 +383,7 @@ async def _discover_facilities(page: Page, room_target: str) -> list[FacilityCan
         ):
             continue
 
-        await page.goto(NEW_BOOKING_URL, wait_until="networkidle")
+        await page.goto(NEW_BOOKING_URL, wait_until="domcontentloaded", timeout=20_000)
         await _select_option_and_wait(page, "#main_ddlLibrary", library["value"])
         facility_types = await _select_options(page, "#main_ddlType")
 
@@ -250,7 +391,7 @@ async def _discover_facilities(page: Page, room_target: str) -> list[FacilityCan
             if not _matches_rule(rule, library["text"], facility_type["text"]):
                 continue
 
-            await page.goto(NEW_BOOKING_URL, wait_until="networkidle")
+            await page.goto(NEW_BOOKING_URL, wait_until="domcontentloaded", timeout=20_000)
             await _select_option_and_wait(page, "#main_ddlLibrary", library["value"])
             await _select_option_and_wait(page, "#main_ddlType", facility_type["value"])
             facilities = await _select_options(page, "#main_ddlFacility")
@@ -266,10 +407,6 @@ async def _discover_facilities(page: Page, room_target: str) -> list[FacilityCan
                         facility_name=facility["text"],
                     )
                 )
-
-    if not candidates and normalized == "chi_wah_study_rooms":
-        log.warning("Live discovery found no Chi Wah study rooms; using static fallback IDs.")
-        candidates = CHI_WAH_STUDY_ROOM_FALLBACKS
 
     log.info("Discovered %s facilities for target '%s'.", len(candidates), normalized)
     for candidate in candidates[:20]:
@@ -314,7 +451,7 @@ async def _try_book_facility(
         candidate.facility_name,
         candidate.facility_id,
     )
-    await page.goto(booking_url, wait_until="networkidle")
+    await page.goto(booking_url, wait_until="domcontentloaded", timeout=20_000)
 
     # Bail out if we were redirected off the booking form
     if "NewBooking.aspx" not in page.url:
@@ -353,17 +490,17 @@ async def _try_book_facility(
 
     # ── Submit ────────────────────────────────────────────────────────────────
     await page.click("input[name='ctl00$main$btnSubmit']")
-    await page.wait_for_load_state("networkidle")
+    await page.wait_for_load_state("domcontentloaded", timeout=20_000)
 
     # Optional Yes/No confirmation step
     if await _visible(page, "input[name='ctl00$main$btnSubmitYes']"):
         await page.click("input[name='ctl00$main$btnSubmitYes']")
-        await page.wait_for_load_state("networkidle")
+        await page.wait_for_load_state("domcontentloaded", timeout=20_000)
 
     # Optional email step — always skip
     if await _visible(page, "input[name='ctl00$main$btnSkipEmail']"):
         await page.click("input[name='ctl00$main$btnSkipEmail']")
-        await page.wait_for_load_state("networkidle")
+        await page.wait_for_load_state("domcontentloaded", timeout=20_000)
 
     # ── Detect outcome ────────────────────────────────────────────────────────
     page_text = (await page.inner_text("body")).lower()
