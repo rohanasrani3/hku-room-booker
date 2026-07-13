@@ -99,6 +99,10 @@ def main() -> None:
         if result.returncode == 0:
             entry["status"] = "booked"
             entry.pop("last_error", None)
+        elif result.returncode == 2:
+            entry["status"] = "unavailable"
+            entry["last_error"] = "No matching room could be booked for this date/time."
+            any_failed = True
         else:
             entry["status"] = "failed"
             entry["last_error"] = f"book.py exited with {result.returncode}"

@@ -34,6 +34,30 @@ class FacilityCandidate:
     facility_name: str
 
 
+@dataclass(frozen=True)
+class BookingResult:
+    status: str
+    reason: str
+
+    @property
+    def success(self) -> bool:
+        return self.status == "booked"
+
+    @property
+    def retryable(self) -> bool:
+        return self.status == "retryable_error"
+
+
+@dataclass(frozen=True)
+class FacilityAttemptResult:
+    status: str
+    reason: str
+
+    @property
+    def booked(self) -> bool:
+        return self.status == "booked"
+
+
 TARGET_RULES: dict[str, TargetRule] = {
     "all_study_rooms": TargetRule(
         "All bookable HKU study rooms, discussion rooms, single study rooms, and study booths",
@@ -109,6 +133,10 @@ TARGET_ALIASES = {
 }
 
 BOOKING_TARGETS = tuple(sorted((*TARGET_RULES.keys(), *TARGET_ALIASES.keys())))
+
+RETRYABLE_ERROR = "retryable_error"
+UNAVAILABLE = "unavailable"
+TERMINAL_REJECTED = "terminal_rejected"
 
 
 def _facilities(
@@ -275,15 +303,6 @@ def _booking_record_times(sessions: list[str]) -> tuple[str, str]:
 
 # ── Booking helpers ───────────────────────────────────────────────────────────
 
-async def _visible(page: Page, selector: str, timeout: int = 3_000) -> bool:
-    """Return True if the element appears within timeout ms."""
-    try:
-        await page.locator(selector).wait_for(state="visible", timeout=timeout)
-        return True
-    except PWTimeout:
-        return False
-
-
 async def _select_options(page: Page, selector: str) -> list[dict[str, str]]:
     return await page.locator(selector).evaluate(
         """select => [...select.options].map(option => ({
@@ -301,37 +320,149 @@ async def _select_option_and_wait(page: Page, selector: str, value: str) -> None
         await page.wait_for_load_state("domcontentloaded")
 
 
+def _compact_text(raw: str) -> str:
+    return " ".join(raw.lower().split())
+
+
+async def _page_text(page: Page) -> str:
+    try:
+        return _compact_text(await page.inner_text("body", timeout=5_000))
+    except PWTimeout:
+        return ""
+
+
+async def _click_and_settle(page: Page, selector: str, label: str) -> None:
+    log.info("  Clicking %s", label)
+    try:
+        async with page.expect_navigation(wait_until="domcontentloaded", timeout=15_000):
+            await page.click(selector, timeout=10_000)
+    except PWTimeout:
+        try:
+            await page.wait_for_load_state("domcontentloaded", timeout=10_000)
+        except PWTimeout:
+            pass
+        await page.wait_for_timeout(750)
+
+
+async def _click_visible_if_present(page: Page, selector: str, label: str) -> bool:
+    locator = page.locator(selector)
+    try:
+        await locator.wait_for(state="visible", timeout=3_000)
+    except PWTimeout:
+        return False
+    await _click_and_settle(page, selector, label)
+    return True
+
+
+def _classify_portal_text(page_text: str) -> FacilityAttemptResult | None:
+    """Classify explicit portal messages. My Booking Record is checked separately."""
+    if not page_text:
+        return FacilityAttemptResult(RETRYABLE_ERROR, "Portal returned an empty or unreadable result page.")
+
+    success_phrases = (
+        "booking is successful",
+        "booking successful",
+        "successfully booked",
+        "booking has been confirmed",
+        "booking confirmed",
+        "booking reference",
+        "booking ref",
+        "reservation is confirmed",
+    )
+    if any(phrase in page_text for phrase in success_phrases):
+        return FacilityAttemptResult("booked", "Portal reported a successful booking.")
+
+    terminal_phrases = (
+        "you have already made a booking",
+        "you have made a booking",
+        "already have a booking",
+        "another booking",
+        "same time slot",
+        "same timeslot",
+        "overlapping booking",
+        "booking quota",
+        "quota exceeded",
+        "maximum number of booking",
+        "maximum number of bookings",
+        "maximum booking",
+        "exceed the maximum",
+        "exceeded the maximum",
+        "not eligible",
+        "not allowed",
+        "suspended",
+        "blacklisted",
+    )
+    if any(phrase in page_text for phrase in terminal_phrases):
+        return FacilityAttemptResult(
+            TERMINAL_REJECTED,
+            "Portal rejected the request because the user cannot make this booking.",
+        )
+
+    unavailable_phrases = (
+        "not available",
+        "already booked",
+        "has been booked",
+        "session is full",
+        "no available",
+        "selected session is not available",
+        "selected sessions are not available",
+    )
+    if any(phrase in page_text for phrase in unavailable_phrases):
+        return FacilityAttemptResult(UNAVAILABLE, "This facility/session is unavailable.")
+
+    validation_phrases = (
+        "invalid booking",
+        "invalid session",
+        "invalid date",
+        "required field",
+        "cannot be blank",
+        "booking error",
+    )
+    if any(phrase in page_text for phrase in validation_phrases):
+        return FacilityAttemptResult(
+            TERMINAL_REJECTED,
+            "Portal rejected the request with a validation error.",
+        )
+
+    return None
+
+
 async def _matching_booking_record_exists(
     page: Page,
     target_date: date,
     sessions: list[str],
+    attempts: int = 1,
+    pause_ms: int = 2_000,
 ) -> bool:
     """Return True if My Booking Record already contains this date/time."""
     start_label, end_label = _booking_record_times(sessions)
 
     log.info("Checking My Booking Record for an existing matching booking...")
-    try:
-        await page.goto(f"{BASE}/MyBookingRecord.aspx", wait_until="domcontentloaded", timeout=20_000)
-    except PWTimeout:
-        log.warning("Timed out while checking My Booking Record; continuing to booking attempts.")
-        return False
+    for attempt in range(1, attempts + 1):
+        try:
+            await page.goto(f"{BASE}/MyBookingRecord.aspx", wait_until="domcontentloaded", timeout=20_000)
+            rows = await page.locator("tr").evaluate_all(
+                """rows => rows.map(row => [...row.cells]
+                    .map(cell => cell.innerText.trim())
+                    .filter(Boolean))"""
+            )
+        except PWTimeout:
+            log.warning("Timed out while checking My Booking Record.")
+            rows = []
 
-    rows = await page.locator("tr").evaluate_all(
-        """rows => rows.map(row => [...row.cells]
-            .map(cell => cell.innerText.trim())
-            .filter(Boolean))"""
-    )
+        for cells in rows:
+            row_text = " ".join(cells).lower()
+            if (
+                target_date.isoformat() in row_text
+                and start_label in row_text
+                and end_label in row_text
+                and "booked" in row_text
+            ):
+                log.info("Matching booking already appears in My Booking Record: %s", " | ".join(cells))
+                return True
 
-    for cells in rows:
-        row_text = " ".join(cells).lower()
-        if (
-            target_date.isoformat() in row_text
-            and start_label in row_text
-            and end_label in row_text
-            and "booked" in row_text
-        ):
-            log.info("Matching booking already appears in My Booking Record: %s", " | ".join(cells))
-            return True
+        if attempt < attempts:
+            await page.wait_for_timeout(pause_ms)
 
     return False
 
@@ -429,8 +560,8 @@ async def _try_book_facility(
     sessions: list[str],
     purpose: str,
     dry_run: bool,
-) -> bool:
-    """Try to book one specific facility. Returns True on confirmed success."""
+) -> FacilityAttemptResult:
+    """Try to book one specific facility and classify the result."""
     date_str    = target_date.strftime("%Y%m%d")
     date_iso    = target_date.strftime("%Y-%m-%d")
     query = urlencode(
@@ -456,17 +587,17 @@ async def _try_book_facility(
     # Bail out if we were redirected off the booking form
     if "NewBooking.aspx" not in page.url:
         log.warning(f"  Facility {candidate.facility_id}: unexpected redirect → {page.url}")
-        return False
+        return FacilityAttemptResult(RETRYABLE_ERROR, f"Unexpected redirect to {page.url}")
 
     # Verify all required session checkboxes exist and are available
     for session in sessions:
         cb = page.locator(f"input[type='checkbox'][value='{session}']")
         if not await cb.count():
             log.warning(f"  Session {session} not on form (outside library hours?)")
-            return False
+            return FacilityAttemptResult(UNAVAILABLE, "Requested session is not on this facility form.")
         if not await cb.is_enabled():
             log.info(f"  Facility {candidate.facility_id}: session {session} is already booked")
-            return False
+            return FacilityAttemptResult(UNAVAILABLE, "Requested session is already booked for this facility.")
 
     # Tick all required sessions (first one is pre-checked by URL param)
     for session in sessions:
@@ -486,46 +617,45 @@ async def _try_book_facility(
 
     if dry_run:
         log.info("  [dry-run] Stopping before Submit.")
-        return True
+        return FacilityAttemptResult("booked", "Dry run completed before submit.")
 
     # ── Submit ────────────────────────────────────────────────────────────────
-    await page.click("input[name='ctl00$main$btnSubmit']")
-    await page.wait_for_load_state("domcontentloaded", timeout=20_000)
+    await _click_and_settle(page, "input[name='ctl00$main$btnSubmit']", "Submit")
 
     # Optional Yes/No confirmation step
-    if await _visible(page, "input[name='ctl00$main$btnSubmitYes']"):
-        await page.click("input[name='ctl00$main$btnSubmitYes']")
-        await page.wait_for_load_state("domcontentloaded", timeout=20_000)
+    await _click_visible_if_present(page, "input[name='ctl00$main$btnSubmitYes']", "confirmation")
 
     # Optional email step — always skip
-    if await _visible(page, "input[name='ctl00$main$btnSkipEmail']"):
-        await page.click("input[name='ctl00$main$btnSkipEmail']")
-        await page.wait_for_load_state("domcontentloaded", timeout=20_000)
+    await _click_visible_if_present(page, "input[name='ctl00$main$btnSkipEmail']", "Skip email")
 
     # ── Detect outcome ────────────────────────────────────────────────────────
-    page_text = (await page.inner_text("body")).lower()
+    page_text = await _page_text(page)
+    portal_result = _classify_portal_text(page_text)
 
-    error_words = ["not available", "already booked", "conflict", "exceed", "invalid", "error"]
-    if any(w in page_text for w in error_words):
-        if await _matching_booking_record_exists(page, target_date, sessions):
-            log.info(f"  Facility {candidate.facility_id}: booking verified in My Booking Record")
-            return True
-        log.info(f"  Facility {candidate.facility_id}: server rejected booking")
-        return False
+    if portal_result and portal_result.booked:
+        await _click_visible_if_present(page, "input[name='ctl00$main$btnCloseResult']", "Close result")
+        if await _matching_booking_record_exists(page, target_date, sessions, attempts=6, pause_ms=2_000):
+            log.info(f"  Facility {candidate.facility_id}: BOOKED")
+            return portal_result
+        log.warning("  Portal reported success, but My Booking Record did not confirm it yet.")
+        return FacilityAttemptResult(
+            RETRYABLE_ERROR,
+            "Portal reported success but the booking record did not confirm it.",
+        )
 
-    success_words = ["successfully", "confirmed", "booking ref", "receipt", "thank", "booked"]
-    if any(w in page_text for w in success_words):
-        if await _visible(page, "input[name='ctl00$main$btnCloseResult']", timeout=2_000):
-            await page.click("input[name='ctl00$main$btnCloseResult']")
-        log.info(f"  Facility {candidate.facility_id}: BOOKED")
-        return True
-
-    if await _matching_booking_record_exists(page, target_date, sessions):
+    if await _matching_booking_record_exists(page, target_date, sessions, attempts=6, pause_ms=2_000):
         log.info(f"  Facility {candidate.facility_id}: booking verified in My Booking Record")
-        return True
+        return FacilityAttemptResult("booked", "Booking verified in My Booking Record.")
 
-    log.warning(f"  Facility {candidate.facility_id}: ambiguous result → {page_text[:300]}")
-    return False
+    if portal_result:
+        log.info(f"  Facility {candidate.facility_id}: {portal_result.reason}")
+        return portal_result
+
+    log.warning(f"  Facility {candidate.facility_id}: ambiguous result -> {page_text[:300]}")
+    return FacilityAttemptResult(
+        RETRYABLE_ERROR,
+        "Portal result was ambiguous and My Booking Record did not confirm the booking.",
+    )
 
 
 # ── Public entry point ────────────────────────────────────────────────────────
@@ -538,10 +668,10 @@ async def book_room(
     purpose: str = "Study",
     headless: bool = True,
     dry_run: bool = False,
-) -> bool:
+) -> BookingResult:
     """
     Login, then try each matching HKU facility in order until one is successfully booked
-    for target_date, start_time, duration_hours hours.  Returns True on success.
+    for target_date, start_time, duration_hours hours.
     """
     sessions = _sessions_for(start_time, duration_hours)
     normalized_target = _normalize_target(room_target)
@@ -559,16 +689,18 @@ async def book_room(
             await login(page)
             if await _matching_booking_record_exists(page, target_date, sessions):
                 log.info("DONE — matching booking already exists.")
-                return True
+                return BookingResult("booked", "Matching booking already exists.")
 
             candidates = await _discover_facilities(page, normalized_target)
             if not candidates:
                 log.error("No matching facilities found for target '%s'.", normalized_target)
-                return False
+                return BookingResult(UNAVAILABLE, f"No matching facilities found for target '{normalized_target}'.")
 
+            had_unavailable = False
+            last_retryable_error = ""
             for candidate in candidates:
                 try:
-                    ok = await _try_book_facility(
+                    result = await _try_book_facility(
                         page,
                         candidate,
                         target_date,
@@ -576,11 +708,28 @@ async def book_room(
                         purpose,
                         dry_run,
                     )
-                    if ok:
-                        return True
+                    if result.booked:
+                        return BookingResult("booked", result.reason)
+                    if result.status == TERMINAL_REJECTED:
+                        log.error("Portal says this booking cannot be made: %s", result.reason)
+                        return BookingResult(TERMINAL_REJECTED, result.reason)
+                    if result.status == RETRYABLE_ERROR:
+                        log.warning("Retryable portal/automation issue: %s", result.reason)
+                        return BookingResult(RETRYABLE_ERROR, result.reason)
+                    had_unavailable = True
                 except Exception:
+                    last_retryable_error = f"Exception on facility {candidate.facility_id}."
                     log.exception(f"  Exception on facility {candidate.facility_id} — trying next")
-            log.error("All facilities tried — none available.")
-            return False
+            if had_unavailable:
+                log.error("All facilities tried — none available for the requested time.")
+                return BookingResult(
+                    UNAVAILABLE,
+                    "All matching facilities are unavailable for the requested time.",
+                )
+            log.error("Unable to complete booking due to automation errors.")
+            return BookingResult(
+                RETRYABLE_ERROR,
+                last_retryable_error or "No facility attempt completed.",
+            )
         finally:
             await browser.close()

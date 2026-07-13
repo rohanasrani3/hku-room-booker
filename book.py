@@ -169,7 +169,7 @@ async def main() -> None:
 
     for attempt in range(1, 4):
         log.info(f"Attempt {attempt}/3")
-        success = await book_room(
+        result = await book_room(
             target_date=target_date,
             start_time=start_time,
             duration_hours=duration_hours,
@@ -178,11 +178,14 @@ async def main() -> None:
             headless=not args.no_headless,
             dry_run=args.dry_run,
         )
-        if success:
+        if result.success:
             log.info(f"DONE — {target_date} {args.start_time} ({duration_hours}h, {args.room_target})")
             sys.exit(0)
+        if not result.retryable:
+            log.error("STOPPED — %s", result.reason)
+            sys.exit(2)
         if attempt < 3:
-            log.warning("Retrying in 30 seconds...")
+            log.warning("Retrying in 30 seconds after retryable issue: %s", result.reason)
             time.sleep(30)
 
     log.error(f"FAILED after 3 attempts — {target_date} {args.start_time} ({args.room_target})")
