@@ -19,5 +19,15 @@
     "attempt_count": 1,
     "last_attempt_at": "2026-07-07T02:16:29+08:00",
     "updated_at": "2026-07-07T02:16:29+08:00"
+  },
+  {
+    "id": "2026-07-15-10:00-all_study_rooms-20260713175606",
+    "date": "2026-07-15",
+    "time": "10:00",
+    "duration": 2,
+    "room_target": "all_study_rooms",
+    "status": "pending",
+    "created_at": "2026-07-13T17:56:06+08:00",
+    "attempt_count": 0
   }
 ]
