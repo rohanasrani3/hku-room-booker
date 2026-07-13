@@ -8,8 +8,8 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from booker import BOOKING_TARGETS
-from config import HKT_TIMEZONE
+from config import DEFAULT_ROOM_TARGET, HKT_TIMEZONE
+from room_catalog import normalize_target
 
 HKT = ZoneInfo(HKT_TIMEZONE)
 ROOT = Path(__file__).resolve().parent
@@ -22,10 +22,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--duration", required=True, help="Hours to book, 1-4.")
     parser.add_argument(
         "--room-target",
-        "--room-type",
         dest="room_target",
-        choices=BOOKING_TARGETS,
-        default="all_study_rooms",
+        default=DEFAULT_ROOM_TARGET,
         help="Study-space target.",
     )
     return parser.parse_args()
@@ -45,18 +43,21 @@ def main() -> None:
 
     if target_date < today_hkt:
         sys.exit("Target date is in the past.")
+    try:
+        args.room_target = normalize_target(args.room_target)
+    except ValueError as exc:
+        sys.exit(str(exc))
 
     base_args = [
         "--date", args.date,
         "--time", args.start_time,
         "--duration", args.duration,
         "--room-target", args.room_target,
-        "--purpose", "Study",
     ]
 
     if target_date <= today_hkt + timedelta(days=1):
         print("Booking window is open or opens today; running immediate booking.", flush=True)
-        command = [sys.executable, "book.py", *base_args, "--now"]
+        command = [sys.executable, "book.py", *base_args]
     else:
         print("Booking date is after tomorrow; queueing future automatic booking.", flush=True)
         command = [sys.executable, "queue_booking.py", *base_args]

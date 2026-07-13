@@ -1,9 +1,9 @@
 name: HKU Room Booker
 
 on:
-  # Midnight HKT = 16:00 UTC
+  # 23:45 HKT = 15:45 UTC. Python waits locally until midnight before booking.
   schedule:
-    - cron: '0 16 * * *'
+    - cron: '45 15 * * *'
 
   # Manual trigger: go to Actions -> HKU Room Booker -> Run workflow
   workflow_dispatch:
@@ -23,21 +23,6 @@ on:
         description: 'Room target'
         required: true
         default: 'all_study_rooms'
-        type: choice
-        options:
-          - all_study_rooms
-          - chi_wah_study_rooms
-          - chi_wah_study_booths
-          - discussion_rooms
-          - single_study_rooms
-          - study_tables
-          - main_library_discussion_rooms
-          - main_library_single_study_rooms
-          - dental_discussion_rooms
-          - law_discussion_rooms
-          - medical_discussion_rooms
-          - medical_single_study_rooms
-          - music_discussion_rooms
 
 jobs:
   book:

@@ -4,11 +4,14 @@
 import json
 import subprocess
 import sys
-from datetime import datetime, timedelta, date
+import time as sleeper
+from datetime import datetime, timedelta, date, time
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-HKT = ZoneInfo("Asia/Hong_Kong")
+from config import DEFAULT_ROOM_TARGET, HKT_TIMEZONE
+
+HKT = ZoneInfo(HKT_TIMEZONE)
 BOOKINGS_FILE = Path(__file__).parent / "bookings.json"
 
 
@@ -28,7 +31,19 @@ def parse_date(raw: str) -> date | None:
 
 
 def booking_target(entry: dict) -> str:
-    return entry.get("room_target") or entry.get("room_type") or "all_study_rooms"
+    return entry.get("room_target") or entry.get("room_type") or DEFAULT_ROOM_TARGET
+
+
+def wait_until_booking_window() -> None:
+    now = datetime.now(tz=HKT)
+    if now.hour != 23:
+        return
+
+    midnight = datetime.combine(now.date() + timedelta(days=1), time.min, tzinfo=HKT)
+    wait_seconds = (midnight - now).total_seconds()
+    if wait_seconds > 0:
+        print(f"Scheduled runner started before midnight HKT; waiting {wait_seconds / 60:.1f} minutes.")
+        sleeper.sleep(wait_seconds + 1)
 
 
 def save_bookings(bookings: list[dict]) -> None:
@@ -48,6 +63,8 @@ def main() -> None:
     if not isinstance(bookings, list):
         print("bookings.json must contain a JSON list.")
         sys.exit(1)
+
+    wait_until_booking_window()
 
     now = datetime.now(tz=HKT).isoformat(timespec="seconds")
     target = booking_window_target()
@@ -92,8 +109,6 @@ def main() -> None:
                 "--time",      entry["time"],
                 "--duration",  str(entry["duration"]),
                 "--room-target", booking_target(entry),
-                "--purpose", entry.get("purpose", "Study"),
-                "--now",
             ]
         )
         if result.returncode == 0:

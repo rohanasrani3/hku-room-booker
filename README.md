@@ -18,7 +18,9 @@ This repo is the execution engine. It stores no shared UI and should be forked b
 
 Open `Actions -> HKU Room Booker -> Run workflow`.
 
-Enter the date, time, duration, and room target. If the date is today or tomorrow HKT, the workflow books immediately. If the date is after tomorrow, it queues the request in `bookings.json`; the midnight HKT cron will run it when the booking window opens.
+Enter the date, time, duration, and room target. If the date is today or tomorrow HKT, the workflow books immediately. If the date is after tomorrow, it queues the request in `bookings.json`.
+
+The scheduled workflow starts before midnight HKT and the Python runner waits until the booking window opens. This avoids GitHub's delayed `:00` cron queue while still attempting bookings at midnight.
 
 ## Shared UI
 
@@ -33,7 +35,7 @@ Deploy that UI once with GitHub Pages. Every user can open the same UI and dispa
 ## Local CLI
 
 ```bash
-python3 book.py --date tomorrow --time 10:00 --duration 2 --room-target all_study_rooms --now
+python3 book.py --date tomorrow --time 10:00 --duration 2 --room-target all_study_rooms
 ```
 
-Available room targets are listed in `booker.py` as `TARGET_RULES`.
+Available room targets and facility IDs are configured in `data/room_catalog.json`. Runtime defaults such as URLs, timezone, default room target, browser mode, and booking purpose are configured in `data/settings.json` and can be overridden with environment variables.

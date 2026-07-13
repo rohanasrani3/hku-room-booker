@@ -3,7 +3,7 @@
 HKU Library automatic room booker.
 
 The booking window for a given date opens at midnight HKT on the day before.
-This script sleeps until that exact moment, then fires the Playwright booking.
+Future bookings should be queued with run_manual.py or queue_booking.py.
 
 Sessions are 1-hour blocks (08:00–09:00, 09:00–10:00, … 22:00–23:00, 23:00–23:45).
 --duration is the number of consecutive hours to book (integer, 1–4).
@@ -15,11 +15,6 @@ Usage:
     python book.py --date tomorrow   --time 10:00 --duration 2 --room-target all_study_rooms
     python book.py --date 2026-06-22 --time 09:00 --duration 3 --room-target discussion_rooms
 
-Flags:
-    --no-headless   Show the browser window (useful for debugging)
-    --dry-run       Go through all steps but skip the final form submit
-    --now           Skip the midnight wait and book immediately
-
 Background (keep running after closing terminal):
     nohup python book.py --date tomorrow --time 10:00 --duration 2 \\
           --room-target all_study_rooms > /dev/null 2>&1 & disown
@@ -29,12 +24,12 @@ import argparse
 import asyncio
 import logging
 import sys
-import time
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from config import LOG_FILE, HKT_TIMEZONE
-from booker import BOOKING_TARGETS, book_room
+from config import DEFAULT_ROOM_TARGET, HEADLESS, LOG_FILE, HKT_TIMEZONE
+from booker import book_room
+from room_catalog import normalize_target
 
 HKT = ZoneInfo(HKT_TIMEZONE)
 
@@ -73,28 +68,9 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument(
         "--room-target",
-        "--room-type",
         dest="room_target",
-        choices=BOOKING_TARGETS,
-        default="all_study_rooms",
-        help="Study-space target. Old aliases still work: group, discussion.",
-    )
-    p.add_argument(
-        "--purpose",
-        default="Study",
-        help="Booking description/purpose filled into the HKU form.",
-    )
-    p.add_argument(
-        "--no-headless", action="store_true",
-        help="Show the Chromium browser window (for debugging)",
-    )
-    p.add_argument(
-        "--dry-run", action="store_true",
-        help="Fill in the form but do NOT submit",
-    )
-    p.add_argument(
-        "--now", action="store_true",
-        help="Skip the midnight wait and book immediately",
+        default=DEFAULT_ROOM_TARGET,
+        help="Study-space target.",
     )
     return p.parse_args()
 
@@ -108,16 +84,6 @@ def resolve_date(raw: str) -> date:
         sys.exit(f"Invalid date '{raw}'. Use YYYY-MM-DD or 'tomorrow'.")
 
 
-def midnight_hkt_before(target: date) -> datetime:
-    """HKT midnight that opens the booking window for target (00:00 of the day before)."""
-    prev = target - timedelta(days=1)
-    return datetime(prev.year, prev.month, prev.day, 0, 0, 0, tzinfo=HKT)
-
-
-def seconds_until(dt: datetime) -> float:
-    return (dt - datetime.now(tz=HKT)).total_seconds()
-
-
 async def main() -> None:
     setup_logging()
     args = parse_args()
@@ -129,6 +95,10 @@ async def main() -> None:
 
     if duration_hours < 1 or duration_hours > 4:
         sys.exit("--duration must be between 1 and 4 hours.")
+    try:
+        args.room_target = normalize_target(args.room_target)
+    except ValueError as exc:
+        sys.exit(str(exc))
 
     try:
         start_time = datetime.strptime(args.start_time, "%H:%M").time()
@@ -141,7 +111,7 @@ async def main() -> None:
         sys.exit("Booking duration cannot run past midnight.")
     if target_date < today_hkt:
         sys.exit("Target date is in the past.")
-    if args.now and target_date > today_hkt + timedelta(days=1):
+    if target_date > today_hkt + timedelta(days=1):
         sys.exit(
             "The booking window is not open for that date yet. "
             "Use the manual workflow to queue it automatically."
@@ -152,20 +122,7 @@ async def main() -> None:
         f"{duration_hours}h | target={args.room_target}"
     )
 
-    if not args.now:
-        opening   = midnight_hkt_before(target_date)
-        wait_secs = seconds_until(opening)
-        if wait_secs > 0:
-            log.info(
-                f"Waiting until {opening.strftime('%Y-%m-%d %H:%M HKT')} "
-                f"({wait_secs/3600:.1f}h away)..."
-            )
-            time.sleep(wait_secs)
-            log.info("Booking window open — starting now.")
-        else:
-            log.info("Booking window already open — proceeding immediately.")
-    else:
-        log.info("--now flag set — booking immediately.")
+    log.info("Booking immediately.")
 
     for attempt in range(1, 4):
         log.info(f"Attempt {attempt}/3")
@@ -174,9 +131,7 @@ async def main() -> None:
             start_time=start_time,
             duration_hours=duration_hours,
             room_target=args.room_target,
-            purpose=args.purpose,
-            headless=not args.no_headless,
-            dry_run=args.dry_run,
+            headless=HEADLESS,
         )
         if result.success:
             log.info(f"DONE — {target_date} {args.start_time} ({duration_hours}h, {args.room_target})")
@@ -186,7 +141,7 @@ async def main() -> None:
             sys.exit(2)
         if attempt < 3:
             log.warning("Retrying in 30 seconds after retryable issue: %s", result.reason)
-            time.sleep(30)
+            await asyncio.sleep(30)
 
     log.error(f"FAILED after 3 attempts — {target_date} {args.start_time} ({args.room_target})")
     sys.exit(1)

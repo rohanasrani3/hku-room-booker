@@ -1,0 +1,8 @@
+{
+  "booking_base_url": "https://booking.lib.hku.hk/getpatron.aspx",
+  "booking_secure_base_url": "https://booking.lib.hku.hk/Secure",
+  "default_booking_purpose": "Study",
+  "default_room_target": "all_study_rooms",
+  "headless": true,
+  "timezone": "Asia/Hong_Kong"
+}

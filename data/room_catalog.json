@@ -1,0 +1,251 @@
+{
+  "aliases": {
+    "all": "all_study_rooms",
+    "booth": "chi_wah_study_booths",
+    "discussion": "discussion_rooms",
+    "group": "chi_wah_study_rooms",
+    "single": "single_study_rooms",
+    "study": "chi_wah_study_rooms"
+  },
+  "targets": {
+    "all_study_rooms": {
+      "description": "All bookable HKU study rooms, discussion rooms, single study rooms, and study booths",
+      "type_keywords": ["study room", "discussion room", "study booth"],
+      "exclude_type_keywords": ["study table"],
+      "facility_groups": [
+        "chi_wah_study_rooms",
+        "chi_wah_study_booths",
+        "main_library_discussion_rooms",
+        "dental_discussion_rooms",
+        "law_discussion_rooms",
+        "medical_discussion_rooms",
+        "music_discussion_rooms",
+        "main_library_single_study_rooms",
+        "medical_single_study_rooms"
+      ]
+    },
+    "chi_wah_study_booths": {
+      "description": "Chi Wah Learning Commons study booths",
+      "library_keywords": ["chi wah"],
+      "type_exact": ["study booth"],
+      "facility_groups": ["chi_wah_study_booths"]
+    },
+    "chi_wah_study_rooms": {
+      "description": "Chi Wah Learning Commons study rooms",
+      "library_keywords": ["chi wah"],
+      "type_exact": ["study room"],
+      "facility_groups": ["chi_wah_study_rooms"]
+    },
+    "dental_discussion_rooms": {
+      "description": "Dental Library discussion rooms",
+      "library_keywords": ["dental"],
+      "type_exact": ["discussion room"],
+      "facility_groups": ["dental_discussion_rooms"]
+    },
+    "discussion_rooms": {
+      "description": "Discussion rooms in all HKU libraries",
+      "type_exact": ["discussion room"],
+      "facility_groups": [
+        "main_library_discussion_rooms",
+        "dental_discussion_rooms",
+        "law_discussion_rooms",
+        "medical_discussion_rooms",
+        "music_discussion_rooms"
+      ]
+    },
+    "law_discussion_rooms": {
+      "description": "Law Library discussion rooms",
+      "library_keywords": ["law library"],
+      "type_exact": ["discussion room"],
+      "facility_groups": ["law_discussion_rooms"]
+    },
+    "main_library_discussion_rooms": {
+      "description": "Main Library discussion rooms",
+      "library_keywords": ["main library"],
+      "type_exact": ["discussion room"],
+      "facility_groups": ["main_library_discussion_rooms"]
+    },
+    "main_library_single_study_rooms": {
+      "description": "Main Library single study rooms",
+      "library_keywords": ["main library"],
+      "type_keywords": ["single study room"],
+      "facility_groups": ["main_library_single_study_rooms"]
+    },
+    "medical_discussion_rooms": {
+      "description": "Medical Library discussion rooms",
+      "library_keywords": ["medical library"],
+      "type_exact": ["discussion room"],
+      "facility_groups": ["medical_discussion_rooms"]
+    },
+    "medical_single_study_rooms": {
+      "description": "Medical Library single study rooms",
+      "library_keywords": ["medical library"],
+      "type_keywords": ["single study room"],
+      "facility_groups": ["medical_single_study_rooms"]
+    },
+    "music_discussion_rooms": {
+      "description": "Music Library discussion rooms",
+      "library_keywords": ["music library"],
+      "type_exact": ["discussion room"],
+      "facility_groups": ["music_discussion_rooms"]
+    },
+    "single_study_rooms": {
+      "description": "Single study rooms in all HKU libraries",
+      "type_keywords": ["single study room"],
+      "facility_groups": [
+        "main_library_single_study_rooms",
+        "medical_single_study_rooms"
+      ]
+    },
+    "study_tables": {
+      "description": "Bookable study tables",
+      "type_keywords": ["study table"]
+    }
+  },
+  "facility_groups": {
+    "chi_wah_study_booths": {
+      "library_id": 5,
+      "library_name": "Chi Wah Learning Commons",
+      "ftype_id": 56,
+      "type_name": "Study Booth",
+      "facilities": [
+        {"id": 1059, "name": "Study Booth A"},
+        {"id": 1061, "name": "Study Booth B"},
+        {"id": 1062, "name": "Study Booth C"},
+        {"id": 1063, "name": "Study Booth D"}
+      ]
+    },
+    "chi_wah_study_rooms": {
+      "library_id": 5,
+      "library_name": "Chi Wah Learning Commons",
+      "ftype_id": 29,
+      "type_name": "Study Room",
+      "facilities": [
+        {"id": 258, "name": "Study Room 2"},
+        {"id": 259, "name": "Study Room 3"},
+        {"id": 260, "name": "Study Room 4"},
+        {"id": 261, "name": "Study Room 5"},
+        {"id": 263, "name": "Study Room 7"},
+        {"id": 264, "name": "Study Room 8"},
+        {"id": 265, "name": "Study Room 9"},
+        {"id": 266, "name": "Study Room 10"},
+        {"id": 268, "name": "Study Room 12"},
+        {"id": 269, "name": "Study Room 13"},
+        {"id": 270, "name": "Study Room 14"},
+        {"id": 271, "name": "Study Room 15"},
+        {"id": 274, "name": "Study Room 18"},
+        {"id": 275, "name": "Study Room 19"},
+        {"id": 276, "name": "Study Room 20"},
+        {"id": 277, "name": "Study Room 21"}
+      ]
+    },
+    "dental_discussion_rooms": {
+      "library_id": 9,
+      "library_name": "Dental Library",
+      "ftype_id": 21,
+      "type_name": "Discussion Room",
+      "facilities": [
+        {"id": 330, "name": "Room 01"},
+        {"id": 331, "name": "Room 02"},
+        {"id": 332, "name": "Room 03"},
+        {"id": 333, "name": "Room 04"}
+      ]
+    },
+    "law_discussion_rooms": {
+      "library_id": 6,
+      "library_name": "Law Library",
+      "ftype_id": 21,
+      "type_name": "Discussion Room",
+      "facilities": [
+        {"id": 281, "name": "Room 1"},
+        {"id": 282, "name": "Room 2"},
+        {"id": 283, "name": "Room 3"},
+        {"id": 284, "name": "Room 4"},
+        {"id": 285, "name": "Room 5"},
+        {"id": 286, "name": "Room 6"}
+      ]
+    },
+    "main_library_discussion_rooms": {
+      "library_id": 3,
+      "library_name": "Main Library",
+      "ftype_id": 21,
+      "type_name": "Discussion Room",
+      "facilities": [
+        {"id": 126, "name": "Discussion Room 1"},
+        {"id": 127, "name": "Discussion Room 2"},
+        {"id": 128, "name": "Discussion Room 3"},
+        {"id": 129, "name": "Discussion Room 4"},
+        {"id": 1041, "name": "Discussion Room 5"},
+        {"id": 131, "name": "Discussion Room 6"},
+        {"id": 132, "name": "Discussion Room 7"},
+        {"id": 133, "name": "Discussion Room 8"},
+        {"id": 135, "name": "Discussion Room 10"},
+        {"id": 136, "name": "Discussion Room 11"},
+        {"id": 137, "name": "Discussion Room 12"},
+        {"id": 138, "name": "Discussion Room 13"},
+        {"id": 139, "name": "Discussion Room 14"},
+        {"id": 140, "name": "Discussion Room 15"},
+        {"id": 141, "name": "Discussion Room 16"},
+        {"id": 142, "name": "Discussion Room 17"},
+        {"id": 143, "name": "Discussion Room 18"},
+        {"id": 144, "name": "Discussion Room 19"}
+      ]
+    },
+    "main_library_single_study_rooms": {
+      "library_id": 3,
+      "library_name": "Main Library",
+      "ftype_id": 31,
+      "type_name": "Single Study Room",
+      "facilities": [
+        {"id": 398, "name": "Room 422"},
+        {"id": 399, "name": "Room 423"},
+        {"id": 400, "name": "Room 424"},
+        {"id": 401, "name": "Room 425"},
+        {"id": 402, "name": "Room 426"},
+        {"id": 403, "name": "Room 427"},
+        {"id": 404, "name": "Room 428"},
+        {"id": 405, "name": "Room 432"},
+        {"id": 406, "name": "Room 433"},
+        {"id": 407, "name": "Room 434"},
+        {"id": 408, "name": "Room 435"}
+      ]
+    },
+    "medical_discussion_rooms": {
+      "library_id": 8,
+      "library_name": "Medical Library",
+      "ftype_id": 21,
+      "type_name": "Discussion Room",
+      "facilities": [
+        {"id": 501, "name": "Discussion Room 01"},
+        {"id": 502, "name": "Discussion Room 02"},
+        {"id": 503, "name": "Discussion Room 03"},
+        {"id": 504, "name": "Discussion Room 04"},
+        {"id": 505, "name": "Discussion Room 05"},
+        {"id": 506, "name": "Discussion Room 06"}
+      ]
+    },
+    "medical_single_study_rooms": {
+      "library_id": 8,
+      "library_name": "Medical Library",
+      "ftype_id": 30,
+      "type_name": "Single Study Room",
+      "facilities": [
+        {"id": 532, "name": "ALG28"},
+        {"id": 632, "name": "ALG29"},
+        {"id": 628, "name": "ALG30"},
+        {"id": 629, "name": "ALG31"}
+      ]
+    },
+    "music_discussion_rooms": {
+      "library_id": 4,
+      "library_name": "Music Library",
+      "ftype_id": 21,
+      "type_name": "Discussion Room",
+      "facilities": [
+        {"id": 313, "name": "Rm 1"},
+        {"id": 314, "name": "Rm 2"},
+        {"id": 315, "name": "Rm 3"}
+      ]
+    }
+  }
+}

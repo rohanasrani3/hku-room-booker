@@ -8,8 +8,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from booker import BOOKING_TARGETS
-from config import HKT_TIMEZONE
+from config import DEFAULT_ROOM_TARGET, HKT_TIMEZONE
+from room_catalog import normalize_target
 
 HKT = ZoneInfo(HKT_TIMEZONE)
 BOOKINGS_FILE = Path(__file__).parent / "bookings.json"
@@ -22,13 +22,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--duration", type=int, required=True, help="Hours to book, 1-4.")
     parser.add_argument(
         "--room-target",
-        "--room-type",
         dest="room_target",
-        choices=BOOKING_TARGETS,
-        default="all_study_rooms",
+        default=DEFAULT_ROOM_TARGET,
         help="Study-space target.",
     )
-    parser.add_argument("--purpose", default="Study", help="Booking description/purpose.")
     return parser.parse_args()
 
 
@@ -61,6 +58,10 @@ def validate_args(args: argparse.Namespace) -> tuple[str, str]:
         sys.exit("Duration must be between 1 and 4 hours.")
     if start_time.hour + args.duration > 24:
         sys.exit("Booking duration cannot run past midnight.")
+    try:
+        args.room_target = normalize_target(args.room_target)
+    except ValueError as exc:
+        sys.exit(str(exc))
 
     today_hkt = datetime.now(tz=HKT).date()
     earliest_schedulable = today_hkt + timedelta(days=2)
@@ -84,7 +85,6 @@ def main() -> None:
         "time": start_time,
         "duration": args.duration,
         "room_target": args.room_target,
-        "purpose": args.purpose,
         "status": "pending",
         "created_at": datetime.now(tz=HKT).isoformat(timespec="seconds"),
         "attempt_count": 0,
