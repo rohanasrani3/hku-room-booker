@@ -76,6 +76,17 @@ def _booking_record_times(sessions: list[str]) -> tuple[str, str]:
     return _session_time(sessions[0][:4]), _session_time(sessions[-1][4:])
 
 
+def _booking_record_date_labels(target_date: date) -> tuple[str, ...]:
+    return (
+        target_date.isoformat(),
+        target_date.strftime("%Y/%m/%d"),
+        target_date.strftime("%d/%m/%Y"),
+        f"{target_date.day}/{target_date.month}/{target_date.year}",
+        target_date.strftime("%d %b %Y").lower(),
+        target_date.strftime("%b %d, %Y").lower(),
+    )
+
+
 # ── Booking helpers ───────────────────────────────────────────────────────────
 
 async def _select_options(page: Page, selector: str) -> list[dict[str, str]]:
@@ -211,6 +222,7 @@ async def _matching_booking_record_exists(
 ) -> bool:
     """Return True if My Booking Record already contains this date/time."""
     start_label, end_label = _booking_record_times(sessions)
+    date_labels = _booking_record_date_labels(target_date)
 
     log.info("Checking My Booking Record for an existing matching booking...")
     for attempt in range(1, attempts + 1):
@@ -224,11 +236,14 @@ async def _matching_booking_record_exists(
         except PWTimeout:
             log.warning("Timed out while checking My Booking Record.")
             rows = []
+        except Exception:
+            log.exception("Could not check My Booking Record.")
+            rows = []
 
         for cells in rows:
-            row_text = " ".join(cells).lower()
+            row_text = _compact_text(" ".join(cells))
             if (
-                target_date.isoformat() in row_text
+                any(label in row_text for label in date_labels)
                 and start_label in row_text
                 and end_label in row_text
                 and "booked" in row_text
@@ -401,11 +416,9 @@ async def _try_book_facility(
         if await _matching_booking_record_exists(page, target_date, sessions, attempts=6, pause_ms=2_000):
             log.info(f"  Facility {candidate.facility_id}: BOOKED")
             return portal_result
-        log.warning("  Portal reported success, but My Booking Record did not confirm it yet.")
-        return FacilityAttemptResult(
-            RETRYABLE_ERROR,
-            "Portal reported success but the booking record did not confirm it.",
-        )
+        log.warning("  Portal reported success, but My Booking Record could not confirm it yet.")
+        log.info(f"  Facility {candidate.facility_id}: BOOKED based on explicit portal success")
+        return portal_result
 
     if await _matching_booking_record_exists(page, target_date, sessions, attempts=6, pause_ms=2_000):
         log.info(f"  Facility {candidate.facility_id}: booking verified in My Booking Record")
