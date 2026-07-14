@@ -12,13 +12,12 @@ on:
         description: 'Date to book (YYYY-MM-DD)'
         required: true
       time:
-        description: 'Start time HH:MM (must be on the hour)'
+        description: 'Start time HH:MM'
         required: true
         default: '10:00'
       duration:
-        description: 'Hours (1, 2, 3, or 4)'
-        required: true
-        default: '2'
+        description: 'Hours (1 or 2)'
+        default: '1'
       room_target:
         description: 'Room target'
         required: true
