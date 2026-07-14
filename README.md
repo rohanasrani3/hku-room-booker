@@ -22,7 +22,7 @@ The workflow page asks for:
 
 - `date`: target date in `YYYY-MM-DD`
 - `time`: start time, on the hour
-- `duration`: number of hours, from 1 to 4
+- `duration`: number of hours
 - `room_target`: room target dropdown
 
 ## What It Does
