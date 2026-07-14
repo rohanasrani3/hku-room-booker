@@ -13,8 +13,8 @@ Executing the current model requires a GitHub Account. (Or, scroll down if you w
 1. Fork this repository.
 2. In your fork, go to `Settings -> Secrets and variables -> Actions`.
 3. Add these repository secrets:
-   - `HKU_UID` (your uid)
-   - `HKU_PIN` (your password)
+   - `HKU_UID` (your uid: u3****** (no @connect.hku.hk))
+   - `HKU_PIN` (your password: ******)
 4. Go to `Actions -> HKU Room Booker`.
 5. Run the workflow after entering details.
 
