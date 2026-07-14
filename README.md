@@ -8,7 +8,7 @@ No need to worry about your uid-password leaking out as long as you're storing i
 
 ## Setup
 
-Executing the current model required a GitHub Account.
+Executing the current model requires a GitHub Account.
 
 1. Fork this repository.
 2. In your fork, go to `Settings -> Secrets and variables -> Actions`.
