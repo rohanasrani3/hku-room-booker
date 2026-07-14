@@ -1,2 +1,2 @@
-playwright>=1.40
+playwright
 python-dotenv
