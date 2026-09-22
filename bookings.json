@@ -31,5 +31,15 @@
     "attempt_count": 1,
     "last_attempt_at": "2026-07-14T01:36:40+08:00",
     "updated_at": "2026-07-14T01:36:40+08:00"
+  },
+  {
+    "id": "2026-10-25-13:00-chi_wah_study_rooms-20260922110230",
+    "date": "2026-10-25",
+    "time": "13:00",
+    "duration": 2,
+    "room_target": "chi_wah_study_rooms",
+    "status": "pending",
+    "created_at": "2026-09-22T11:02:30+08:00",
+    "attempt_count": 0
   }
 ]
