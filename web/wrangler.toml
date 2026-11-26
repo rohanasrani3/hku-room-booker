@@ -9,7 +9,7 @@ binding = "ASSETS"
 
 # 23:50 HKT (UTC+8, no DST). Cloudflare cron triggers run in UTC.
 [triggers]
-crons = ["59 15 * * *"]
+crons = ["50 15 * * *"]
 
 [observability]
 enabled = true

@@ -49,6 +49,10 @@ class FacilityAttemptResult:
 
 
 RETRYABLE_ERROR = "retryable_error"
+# The booking form never loaded properly (timeout, or a page with no session
+# checkboxes at all, which the portal serves when it is overloaded). Nothing
+# was submitted, so the facility is safe to try again later in the same run.
+FORM_ERROR = "form_error"
 UNAVAILABLE = "unavailable"
 TERMINAL_REJECTED = "terminal_rejected"
 LOGIN_FAILED = "login_failed"
@@ -71,6 +75,14 @@ def _sessions_for(start: time, duration_hours: int) -> list[str]:
 def _session_time(session_part: str) -> str:
     """Convert HHMM from a session token into HH:MM."""
     return f"{session_part[:2]}:{session_part[2:]}"
+
+
+def _describe_sessions(offered: list[str]) -> str:
+    """Summarise the sessions on a booking form, e.g. '08:00-22:00 (14 sessions)'."""
+    return (
+        f"{_session_time(offered[0][:4])}-{_session_time(offered[-1][4:])} "
+        f"({len(offered)} sessions)"
+    )
 
 
 def _booking_record_times(sessions: list[str]) -> tuple[str, str]:
@@ -97,6 +109,19 @@ async def _select_options(page: Page, selector: str) -> list[dict[str, str]]:
             text: option.textContent.trim()
         })).filter(option => option.value)"""
     )
+
+
+async def _offered_sessions(page: Page) -> list[str]:
+    """Session tokens (HHMMHHMM) that have a checkbox on the current booking form."""
+    try:
+        # The form is server-rendered, but give a slow response a moment to finish.
+        await page.locator("input[type='checkbox']").first.wait_for(state="attached", timeout=3_000)
+    except PWTimeout:
+        return []
+    values = await page.eval_on_selector_all(
+        "input[type='checkbox']", "els => els.map(el => el.value)"
+    )
+    return sorted(v for v in values if len(v) == 8 and v.isdigit())
 
 
 async def _select_option_and_wait(page: Page, selector: str, value: str) -> None:
@@ -372,18 +397,37 @@ async def _try_book_facility(
         await page.goto(booking_url, wait_until="domcontentloaded", timeout=20_000)
     except PWTimeout:
         log.warning(f"  Facility {candidate.facility_id}: booking form was slow to load; retrying once")
-        await page.goto(booking_url, wait_until="domcontentloaded", timeout=30_000)
+        try:
+            await page.goto(booking_url, wait_until="domcontentloaded", timeout=30_000)
+        except PWTimeout:
+            log.warning(f"  Facility {candidate.facility_id}: booking form timed out twice")
+            return FacilityAttemptResult(FORM_ERROR, "Booking form timed out.")
 
     # Bail out if we were redirected off the booking form
     if "NewBooking.aspx" not in page.url:
         log.warning(f"  Facility {candidate.facility_id}: unexpected redirect → {page.url}")
         return FacilityAttemptResult(RETRYABLE_ERROR, f"Unexpected redirect to {page.url}")
 
+    # A real booking form always lists the library's sessions for the day. One
+    # with none at all is an error or "busy" page, not proof the room is taken.
+    offered = await _offered_sessions(page)
+    if not offered:
+        title = await page.title()
+        text = await _page_text(page)
+        log.warning(
+            f"  Facility {candidate.facility_id}: booking form has no sessions at all "
+            f"(title={title!r}). Page text: {text[:300]}"
+        )
+        return FacilityAttemptResult(FORM_ERROR, "Booking form loaded without any sessions.")
+
     # Verify all required session checkboxes exist and are available
     for session in sessions:
         cb = page.locator(f"input[type='checkbox'][value='{session}']")
-        if not await cb.count():
-            log.warning(f"  Session {session} not on form (outside library hours?)")
+        if session not in offered:
+            log.warning(
+                f"  Session {session} not on form; this facility offers "
+                f"{_describe_sessions(offered)} on {date_iso}"
+            )
             return FacilityAttemptResult(UNAVAILABLE, "Requested session is not on this facility form.")
         if not await cb.is_enabled():
             log.info(f"  Facility {candidate.facility_id}: session {session} is already booked")
@@ -484,26 +528,56 @@ async def book_room(
 
             had_unavailable = False
             last_retryable_error = ""
-            for candidate in candidates:
-                try:
-                    result = await _try_book_facility(
-                        page,
-                        candidate,
-                        target_date,
-                        sessions,
+            # Right after midnight the portal is swamped and some forms fail to
+            # load. Those facilities get a second pass once the rest are tried.
+            pending = list(candidates)
+            for pass_no in (1, 2):
+                form_errors: list[FacilityCandidate] = []
+                if pass_no == 2:
+                    if not pending:
+                        break
+                    log.info(
+                        "Second pass: retrying %d facilities whose booking form failed to load.",
+                        len(pending),
                     )
-                    if result.booked:
-                        return BookingResult("booked", result.reason)
-                    if result.status == TERMINAL_REJECTED:
-                        log.error("Portal says this booking cannot be made: %s", result.reason)
-                        return BookingResult(TERMINAL_REJECTED, result.reason)
-                    if result.status == RETRYABLE_ERROR:
-                        log.warning("Retryable portal/automation issue: %s", result.reason)
-                        return BookingResult(RETRYABLE_ERROR, result.reason)
-                    had_unavailable = True
-                except Exception:
-                    last_retryable_error = f"Exception on facility {candidate.facility_id}."
-                    log.exception(f"  Exception on facility {candidate.facility_id} — trying next")
+                    await page.wait_for_timeout(5_000)
+                for candidate in pending:
+                    try:
+                        result = await _try_book_facility(
+                            page,
+                            candidate,
+                            target_date,
+                            sessions,
+                        )
+                        if result.booked:
+                            return BookingResult("booked", result.reason)
+                        if result.status == TERMINAL_REJECTED:
+                            log.error("Portal says this booking cannot be made: %s", result.reason)
+                            return BookingResult(TERMINAL_REJECTED, result.reason)
+                        if result.status == RETRYABLE_ERROR:
+                            log.warning("Retryable portal/automation issue: %s", result.reason)
+                            return BookingResult(RETRYABLE_ERROR, result.reason)
+                        if result.status == FORM_ERROR:
+                            form_errors.append(candidate)
+                            last_retryable_error = (
+                                f"Booking form failed to load for {len(form_errors)} facilities."
+                            )
+                            continue
+                        had_unavailable = True
+                    except Exception:
+                        last_retryable_error = f"Exception on facility {candidate.facility_id}."
+                        log.exception(f"  Exception on facility {candidate.facility_id} — trying next")
+                pending = form_errors
+
+            if pending:
+                # Some forms never loaded, so a room may still be free. Report a
+                # retryable error so book.py tries the whole run again.
+                log.error(
+                    "Booking form never loaded for %d facilities: %s",
+                    len(pending),
+                    ", ".join(str(c.facility_id) for c in pending),
+                )
+                return BookingResult(RETRYABLE_ERROR, last_retryable_error)
             if had_unavailable:
                 log.error("All facilities tried — none available for the requested time.")
                 return BookingResult(
